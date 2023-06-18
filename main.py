@@ -11,6 +11,21 @@ class PriceController:
         self.parser: BaseParser = parser
         self.request_handler: RequestHandler = request_handler
         self.db: LinksDatabase = db()
+
+    def run(self):
+        # A forever working loop
+        # Sleep and check each 15 minutes for links to be updated
+        pass
+
+    def get_links_to_check(self):
+        # Fetch links which had their price checked over 4h ago
+        # Check is is_active is 'y' (no need to pointlessly hit a 404)
+        pass
+    
+    def notify_change_in_price(self):
+        # Nofify by SMS that a price has changed
+        # And forefuly notify if below price treshold :D
+        pass
     
     def check(self, full_url: str, headers: dict):
         request_handler = self.request_handler(headers)
