@@ -52,10 +52,10 @@ class LinksDatabase:
         cur.close()
         return links
 
-    def add_link(self, complete_data: dict):
+    def add_link(self, complete_data: dict, headers: dict):
         shop_id = self.get_shop_id_by_name(complete_data['shop_name'])
         if not shop_id:
-            shop_id = self.add_shop(complete_data['shop_name'])
+            shop_id = self.add_shop(complete_data['shop_name'], json.dumps(headers))
 
         new_link_query = f"""
         INSERT INTO links (shop_id, full_url, item_name, price_alert_treshold, created_ts) VALUES 
@@ -71,7 +71,7 @@ class LinksDatabase:
 
 
     def add_price(self, complete_data: dict, link_id: int):
-        print(f"""[DB] Adding {complete_data['current_price']} for {complete_data['item_name']}""")
+        print(f"""[DB]\t[{datetime.now()}]\t Adding {complete_data['current_price']} for {complete_data['item_name']}""")
         price_query = f"""
         INSERT INTO prices (link_id, current_price, ts) VALUES
         ({link_id}, {complete_data['current_price']}, '{datetime.now()}');
@@ -79,13 +79,13 @@ class LinksDatabase:
         self.execute_sql(price_query)
         return True
 
-    def add_shop(self, shop_name: str) -> int:
+    def add_shop(self, shop_name: str, headers: str) -> int:
         query = f"""
-        INSERT INTO shops (shop_name, created_ts) VALUES
-        ('{shop_name}', '{datetime.now()}');
+        INSERT INTO shops (shop_name, headers, created_ts) VALUES
+        ('{shop_name}', '{headers}','{datetime.now()}');
         """
         self.execute_sql(query)
-        print('[INSERT] Shop added!')
+        print(f'[INSERT][{datetime.now()}]\t Shop added!')
 
         shop_id_query = f"""
         SELECT shop_id
@@ -105,6 +105,7 @@ class LinksDatabase:
         self.execute_sql(query)
 
     def update_link(self, complete_data: dict, id_dict: str) -> None:
+        print(f'[DB]\t[{datetime.now()}]\t Updating link_id {id_dict["link_id"]}')
         update_query = f"""
         UPDATE links
             SET shop_id = '{id_dict['shop_id']}',
@@ -112,14 +113,7 @@ class LinksDatabase:
             WHERE link_id = '{id_dict['link_id']}';
         """
         self.execute_sql(update_query)
-        print('[UPDATE] Success!')
-
-        shop_id = self.add_shop(complete_data['shop_name'])
-        new_link_query = f"""
-        INSERT INTO links (shop_id, full_url, item_name, price_alert_treshold, created_ts) VALUES 
-        ( {shop_id}, '{complete_data['full_url']}', '{complete_data['item_name']}', {25}, '{datetime.now()}');
-        """
-        self.execute_sql(new_link_query)
+        print(f'[UPDATE][{datetime.now()}]\t Success!')
 
     def deacticate_link(self, link_id: str) -> None:
         deactivate_query = f"""
@@ -158,7 +152,7 @@ class LinksDatabase:
         # print('[EXECUTE_SQL]: ', query)
         cur = self.conn.cursor()
         cur.execute(query)
-        self.conn.commit()
+        cur.connection.commit()
         cur.close()
 
     def __create_tables(self):

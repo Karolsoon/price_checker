@@ -43,12 +43,7 @@ class RequestHandler:
             response = sess.get(url=url)
             response.raise_for_status()
 
-            print(f"""
-            *********** {url} ***********
-            Status code: {response.status_code}
-            Elapsed    : {response.elapsed}
-            Sent       : {datetime.now()}
-            """)
+            print(f"""[HTTP]\t[{datetime.now()}]\t[{url}]\t[{response.status_code}]\t[{response.elapsed}]""")
 
             self._set_response(response)
             return self.Response

@@ -39,34 +39,37 @@ class PriceController:
                             'ts': datetime.now(),
                             'full_url': full_url
                         }
-                        print(f'[RUN] Hurt myself while processing {full_url}')
+                        print(f'[RUN]\t[{datetime.now()}]\t Hurt myself while processing {full_url}')
                         self.db.add_exception(exception_data)
                     finally:
                         sleep(self.random_interval())
-            print('[RUN] Finished. Sleepy time.')
+            print(f'[RUN]\t[{datetime.now()}]\t Finished. Sleepy time.')
         else:
-            print('[RUN] Nothing to do. Sleep.')
+            print(f'[RUN]\t[{datetime.now()}]\t Nothing to do. Sleep.')
 
         sleep(900)
 
-    def add_new_link(self, full_url: str, price_alert_treshold: int=None):
+    def add_new_link(self, full_url: str, price_alert_treshold: int=None,
+                     headers: dict=None):
+        headers = headers if headers else self.default_headers
         complete_data = self.get_product_data(full_url, self.default_headers)
         complete_data['price_alert_treshold'] = (
             price_alert_treshold
             if price_alert_treshold
             else int(float(complete_data['current_price']) * 0.5)
         )
-        self.db.add_link(complete_data)
+        link_id = self.db.add_link(complete_data, self.default_headers)
+        self.db.add_price(complete_data, link_id)
 
     def get_links_to_check(self) -> dict[str]:
-        print('[LOG] Getting links to check.')
+        print(f'[LOG]\t[{datetime.now()}]\t Getting links to check.')
         links_by_shops = {}
         for link_id ,shop_id, full_url in self.db.get_links_for_cycle():
             if not links_by_shops.get(shop_id, []):
                 links_by_shops[shop_id] = ([full_url], link_id)
             else:
                 links_by_shops[shop_id][0].append(full_url)
-        print(f'[LOG] Got {len(links_by_shops)}')
+        print(f'[LOG]\t[{datetime.now()}]\t Got {len(links_by_shops)}')
         return links_by_shops
     
     def notify_change_in_price(self):
@@ -75,11 +78,11 @@ class PriceController:
         pass
     
     def get_product_data(self, full_url: str, headers: dict) -> dict[str]:
-        print(f'[LOG] Getting {full_url}')
+        print(f'[LOG]\t[{datetime.now()}]\t Getting {full_url}')
         request_handler = self.request_handler(headers)
         response = request_handler.send_request(full_url, cookie_policy=BlockAll)
         data = self.parser(response.content).get()
-        print(f'[LOG] OK')
+        print(f'[LOG]\t[{datetime.now()}]\t OK')
         return self._format(data, response, full_url)
 
     def _format(self, data: dict, response, full_url: str):
@@ -102,20 +105,17 @@ class PriceController:
         return randint(950, 1300)/100.235876
 
 
-
-# urls = [
-#     'https://www.sinsay.com/pl/pl/sukienka-maxi-ze-wzorem-2-6582t-03x',
-#     'https://www.sinsay.com/pl/pl/sukienka-mini-dzianinowa-5912j-40x',
-#     'https://www.sinsay.com/pl/pl/sukienka-mini-na-ramiaczkach-9044t-33x'
-# ]
-
-# controller = PriceController(SinsayParser, RequestHandler, LinksDatabase)
-# for url in urls:
-#     controller.get_product_data(url, DEFAULT_HEADERS)
-#     sleep(randint(400, 800)/100.235876)
-
 if __name__ == '__main__':
     runner = PriceController(SinsayParser, RequestHandler, LinksDatabase)
+    urls = [
+        'https://www.sinsay.com/pl/pl/sukienka-maxi-ze-wzorem-2-6582t-03x',
+        'https://www.sinsay.com/pl/pl/sukienka-mini-dzianinowa-5912j-40x',
+        'https://www.sinsay.com/pl/pl/sukienka-mini-na-ramiaczkach-9044t-33x',
+        'https://www.sinsay.com/pl/pl/sukienka-mini-na-ramiaczkach-1-9044t-mlc'
+    ]
+    for url in urls:
+        runner.add_new_link(url, 25)
+        sleep(10)
     while True:
         try:
             runner.run()
