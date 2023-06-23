@@ -9,3 +9,4 @@ class Notification:
     def send_email(cls, message: str, email_address: str) -> bool:
         pass
 
+pies = 'dupa'
