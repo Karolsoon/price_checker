@@ -28,7 +28,7 @@ class RequestHandler:
     def __init__(self, headers: dict):
         self.headers = headers
         self.uuid = uuid4()
-        self.sent_ts: datetime = datetime.now()
+        self.sent_ts: datetime = datetime.utcnow()
 
     def send_request(self, url: str, cookie_policy) -> Response:
         with requests.Session() as sess:
@@ -40,10 +40,11 @@ class RequestHandler:
             sess.headers = self.headers
 
             # Send request and check status
+            self.sent_ts = datetime.utcnow()
             response = sess.get(url=url)
             response.raise_for_status()
 
-            print(f"""[HTTP]\t[{datetime.now()}]\t[{url}]\t[{response.status_code}]\t[{response.elapsed}]""")
+            print(f"""[HTTP]\t[{datetime.utcnow()}]\t[{url}]\t[{response.status_code}]\t[{response.elapsed}]""")
 
             self._set_response(response)
             return self.Response

@@ -31,21 +31,50 @@ class LinksDatabase:
     def get_links_for_cycle(self) -> list[tuple]:
         query = """
             WITH most_recent_prices AS (
-                    SELECT
-                        link_id,
-                        price_id,
-                        ts,
-                        ROW_NUMBER() OVER(PARTITION BY link_id ORDER BY ts DESC) AS recent
-                    FROM prices)
-                
+                SELECT
+                    p.link_id,
+                    l.full_url,
+                    l.shop_id,
+                    p.ts,
+                    l.visiting_interval_in_hours as interval,
+					ROW_NUMBER() OVER(PARTITION BY l.link_id ORDER BY p.ts DESC) as position
+                FROM prices p
+                LEFT OUTER JOIN links l ON l.link_id = p.link_id
+                WHERE l.link_id IS NOT NULL
+                AND l.is_active = 'y'
+                )
+            SELECT mrp.link_id, mrp.shop_id, mrp.full_url
+            FROM most_recent_prices mrp
+            WHERE mrp.position = 1
+              AND ROUND((julianday(CURRENT_TIMESTAMP) - julianday(mrp.ts)) * 3600) > 2
 
-                SELECT l.link_id, s.shop_id, l.full_url
-                FROM links l
-                INNER JOIN most_recent_prices p ON p.link_id = l.link_id
-                INNER JOIN shops s ON s.shop_id = l.shop_id
-                WHERE l.is_active = 'y'
-                AND p.recent = 1
-                AND (julianday(CURRENT_TIMESTAMP) - julianday(p.ts)) * 3600 > 240
+        """
+        cur = self.conn.cursor()
+        links = cur.execute(query).fetchall()
+        cur.close()
+        return links
+
+    def get_recent_data_by_link(self, link_id: int) -> list[tuple]:
+        query = f"""
+        WITH most_recent_prices AS (
+            SELECT 
+                p.link_id,
+                p.current_price,
+                ROW_NUMBER() OVER(ORDER BY p.ts DESC) AS position
+            FROM prices p
+            WHERE p.link_id = {link_id}
+        )
+        
+        SELECT 
+            l.full_url,
+            mrp.current_price,
+            s.shop_name,
+            l.item_name
+        FROM most_recent_prices mrp
+        LEFT OUTER JOIN links l ON l.link_id = mrp.link_id
+        LEFT OUTER JOIN shops s ON s.shop_id = l.shop_id
+        WHERE mrp.position < 3
+		ORDER BY mrp.position ASC
         """
         cur = self.conn.cursor()
         links = cur.execute(query).fetchall()
@@ -59,7 +88,7 @@ class LinksDatabase:
 
         new_link_query = f"""
         INSERT INTO links (shop_id, full_url, item_name, price_alert_treshold, created_ts) VALUES 
-        ( {shop_id}, '{complete_data['full_url']}', '{complete_data['item_name']}', {25}, '{datetime.now()}');
+        ( {shop_id}, '{complete_data['full_url']}', '{complete_data['item_name']}', {25}, '{datetime.utcnow()}');
         """
         self.execute_sql(new_link_query)
 
@@ -71,10 +100,10 @@ class LinksDatabase:
 
 
     def add_price(self, complete_data: dict, link_id: int):
-        print(f"""[DB]\t[{datetime.now()}]\t Adding {complete_data['current_price']} for {complete_data['item_name']}""")
+        print(f"""[DB]\t[{datetime.utcnow()}]\t Adding {complete_data['current_price']} for {complete_data['item_name']}""")
         price_query = f"""
         INSERT INTO prices (link_id, current_price, ts) VALUES
-        ({link_id}, {complete_data['current_price']}, '{datetime.now()}');
+        ({link_id}, {complete_data['current_price']}, '{datetime.utcnow()}');
         """
         self.execute_sql(price_query)
         return True
@@ -82,10 +111,10 @@ class LinksDatabase:
     def add_shop(self, shop_name: str, headers: str) -> int:
         query = f"""
         INSERT INTO shops (shop_name, headers, created_ts) VALUES
-        ('{shop_name}', '{headers}','{datetime.now()}');
+        ('{shop_name}', '{headers}','{datetime.utcnow()}');
         """
         self.execute_sql(query)
-        print(f'[INSERT][{datetime.now()}]\t Shop added!')
+        print(f'[INSERT][{datetime.utcnow()}]\t Shop added!')
 
         shop_id_query = f"""
         SELECT shop_id
@@ -103,9 +132,17 @@ class LinksDatabase:
         ('{exc['type']}', '{exc['value']}', '{exc['traceback']}', '{exc['string']}', '{exc['ts']}', '{exc['full_url']}')
         """
         self.execute_sql(query)
+    
+    def add_notification(self, notification: dict):
+        query = f"""
+        INSERT INTO notifications (status, confirmation_id, ts) VALUES
+        ('{notification['status']}', '{notification['id']}', '{notification['ts']}');
+        """
+        self.execute_sql(query)
+        print(f'[UPDATE][{datetime.utcnow()}]\t Success!')
 
     def update_link(self, complete_data: dict, id_dict: str) -> None:
-        print(f'[DB]\t[{datetime.now()}]\t Updating link_id {id_dict["link_id"]}')
+        print(f'[DB]\t[{datetime.utcnow()}]\t Updating link_id {id_dict["link_id"]}')
         update_query = f"""
         UPDATE links
             SET shop_id = '{id_dict['shop_id']}',
@@ -113,12 +150,14 @@ class LinksDatabase:
             WHERE link_id = '{id_dict['link_id']}';
         """
         self.execute_sql(update_query)
-        print(f'[UPDATE][{datetime.now()}]\t Success!')
+        print(f'[UPDATE][{datetime.utcnow()}]\t Success!')
 
     def deacticate_link(self, link_id: str) -> None:
         deactivate_query = f"""
         UPDATE links
-            SET is_active = 'n'
+            SET 
+                is_active = 'n',
+                closed_ts = CURRENT_TIMESTAMP
             WHERE link_id = '{link_id}';
         """
         self.execute_sql(deactivate_query)
@@ -162,11 +201,12 @@ class LinksDatabase:
             shop_id INT NULL DEFAULT -1,
             full_url VARCHAR(500) NOT NULL,
             item_name VARCHAR(200) NULL,
-            visiting_interval_in_hours INT NOT NULL DEFAULT 4,
+            visiting_interval_in_hours INT NOT NULL DEFAULT 6,
             price_alert_treshold NUMERIC(4,2) NULL,
             is_active NCHAR(1) NOT NULL DEFAULT 'y',
-			created_ts TEXT DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT unieque_links_full_url UNIQUE(full_url) ON CONFLICT REPLACE,
+			created_ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            closed_ts TEXT NOT NULL DEFAULT '2999-12-31 23:59:59',
+            CONSTRAINT unieque_links_full_url UNIQUE(full_url) ON CONFLICT IGNORE,
             CONSTRAINT unieque_links_link_id_shop_id UNIQUE(link_id, shop_id) ON CONFLICT REPLACE,
             CONSTRAINT fk_links_shop_id FOREIGN KEY (shop_id) REFERENCES shops (shop_id) ON DELETE CASCADE
             );
@@ -194,6 +234,13 @@ class LinksDatabase:
             exception_traceback TEXT NOT NULL,
             exception_string VARCHAR(400),
             full_url VARCHAR(200) NOT NULL,
+            ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            status TEXT NOT NULL,
+            confirmation_id TEXT NOT NULL,
             ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         """
