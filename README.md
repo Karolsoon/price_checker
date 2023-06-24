@@ -1,6 +1,8 @@
 TODO:
 1. Add image_url to links table
 2. Add table or column for the phone number where the text message should be sent
+3. API for adding links interactively while the price checker sleeps - preferrably async or concurrent.
+4. Add more sites to the parser.
 
 
 Exceptions
