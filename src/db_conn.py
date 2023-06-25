@@ -46,7 +46,7 @@ class LinksDatabase:
             SELECT mrp.link_id, mrp.shop_id, mrp.full_url
             FROM most_recent_prices mrp
             WHERE mrp.position = 1
-              AND ROUND((julianday(CURRENT_TIMESTAMP) - julianday(mrp.ts)) * 3600) > 2
+              AND (julianday(CURRENT_TIMESTAMP) - julianday(mrp.ts)) * 24 > mrp.interval
 
         """
         cur = self.conn.cursor()

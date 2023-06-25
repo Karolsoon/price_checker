@@ -80,7 +80,7 @@ class PriceController:
                 return links_by_shops
             except OperationalError:
                 print(f'[LOG]\t[{datetime.utcnow()}]\t Failed to get links to check')
-        raise RuntimeError("Couldn't fetch links for cycle.")
+        raise RuntimeError("Couldn't fetch links for cycle. Database busy? Bad SQL?")
 
     def get_product_data(self, full_url: str, headers: dict) -> dict[str]:
         print(f'[LOG]\t[{datetime.utcnow()}]\t Getting {full_url}')
@@ -144,14 +144,10 @@ class PriceController:
 if __name__ == '__main__':
     runner = PriceController(SinsayParser, RequestHandler, LinksDatabase)
     urls = [
-        'https://www.sinsay.com/pl/pl/sukienka-maxi-ze-wzorem-2-6582t-03x',
-        'https://www.sinsay.com/pl/pl/sukienka-mini-dzianinowa-5912j-40x',
-        'https://www.sinsay.com/pl/pl/sukienka-mini-na-ramiaczkach-9044t-33x',
-        'https://www.sinsay.com/pl/pl/sukienka-mini-na-ramiaczkach-1-9044t-mlc'
+        'https://www.sinsay.com/pl/pl/majtki-5-pack-8022r-mlc',
+        'https://www.sinsay.com/pl/pl/bokserki-3-pack-8848i-09m'
     ]
     for url in urls:
         runner.add_new_link(url, 25)
         sleep(10)
     runner.run()
-
-    # print(runner.get_links_to_check())
