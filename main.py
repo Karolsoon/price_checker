@@ -1,6 +1,6 @@
 from src.send_request import RequestHandler
 from headers.cookie_policies import BlockAll
-from src.parsers import SinsayParser, BaseParser
+from src.parsers import SinsayParser, BaseParser, HMParser
 from src.db_conn import LinksDatabase
 from src.notifications import Notification
 from headers.default import DEFAULT_HEADERS
@@ -18,9 +18,12 @@ class PriceController:
 
     default_headers = DEFAULT_HEADERS
     retry_count = 3
+    parsers: dict = {
+        'HM': HMParser,
+        'SINSAY': SinsayParser
+    }
 
-    def __init__(self, parser: BaseParser, request_handler: RequestHandler, db: LinksDatabase):
-        self.parser: BaseParser = parser
+    def __init__(self, request_handler: RequestHandler, db: LinksDatabase):
         self.request_handler: RequestHandler = request_handler
         self.db: LinksDatabase = db()
 
@@ -43,6 +46,9 @@ class PriceController:
                         print(f'[RUN]\t[{datetime.utcnow()}]\t FAILED - HTTP ERROR!')
                         if exc.response.status_code == 404:
                             self.deactivate_link(link_id=link_id)
+                    except NotImplementedError as exc:
+                        self._write_exception(exc, full_url)
+                        print(f'[RUN]\t[{datetime.utcnow()}]\t FAILED - Parser not implemented!')
                     finally:
                         sleep(self._random_interval())
 
@@ -86,12 +92,20 @@ class PriceController:
         print(f'[LOG]\t[{datetime.utcnow()}]\t Getting {full_url}')
         request_handler = self.request_handler(headers)
         response = request_handler.send_request(full_url, cookie_policy=BlockAll)
-        data = self.parser(response.content).get()
+        site = response.site_name
+        
+        # If shop/site has no appropriate parser - raise exception
+        if not self.parsers.get(site, ''):
+            raise NotImplementedError(f'Parser for "{site}" not implemented')
+        
+        print(f'[LOG]\t[{datetime.utcnow()}]\t Parser: {self.parsers[site]}')
+        data = self.parsers[site](response.content).get()
+
         print(f'[LOG]\t[{datetime.utcnow()}]\t OK')
         return self._format(data, response, full_url)
 
     def notify_if_change_in_price(self, link_id):
-        # url, price, shop_name, item_name
+        # url, price, site_name, item_name
         records = self.db.get_recent_data_by_link(link_id)
         current, previous = records
         if len(records) == 1 or current[1] >= previous[1]:
@@ -142,12 +156,19 @@ class PriceController:
 
 
 if __name__ == '__main__':
-    runner = PriceController(SinsayParser, RequestHandler, LinksDatabase)
+    runner = PriceController(RequestHandler, LinksDatabase)
     urls = [
-        'https://www.sinsay.com/pl/pl/majtki-5-pack-8022r-mlc',
-        'https://www.sinsay.com/pl/pl/bokserki-3-pack-8848i-09m'
+        'https://www2.hm.com/pl_pl/productpage.1182650004.html'
     ]
     for url in urls:
         runner.add_new_link(url, 25)
         sleep(10)
-    runner.run()
+    # while True:
+    #     try:
+    #         runner.run()
+    #     except Exception as exc:
+    #         print(f'[MAIN][{datetime.utcnow()}] Exception occured {exc}')
+    #     finally:
+    #         sleep(1)
+    #         print(f'[MAIN][{datetime.utcnow()}] Full cycle done.')
+        
