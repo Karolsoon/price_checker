@@ -1,6 +1,6 @@
 from src.send_request import RequestHandler
 from headers.cookie_policies import BlockAll
-from src.parsers import SinsayParser, BaseParser, HMParser
+from src.parsers import LPPParser, BaseParser, HMParser, IKEAParser
 from src.db_conn import LinksDatabase
 from src.notifications import Notification
 from headers.default import DEFAULT_HEADERS
@@ -20,7 +20,12 @@ class PriceController:
     retry_count = 3
     parsers: dict = {
         'HM': HMParser,
-        'SINSAY': SinsayParser
+        'SINSAY': LPPParser,
+        'RESERVED': LPPParser,
+        'HOUSEBRAND': LPPParser,
+        'MOHITO': LPPParser,
+        'CROPP': LPPParser,
+        'IKEA': IKEAParser
     }
 
     def __init__(self, request_handler: RequestHandler, db: LinksDatabase):
@@ -158,7 +163,7 @@ class PriceController:
 if __name__ == '__main__':
     runner = PriceController(RequestHandler, LinksDatabase)
     urls = [
-        'https://www2.hm.com/pl_pl/productpage.1182650004.html'
+        'https://www.ikea.com/pl/pl/p/micke-biurko-bialy-30213076/'
     ]
     for url in urls:
         runner.add_new_link(url, 25)

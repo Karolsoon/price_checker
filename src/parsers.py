@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 
 import re
 import json
+import ast
 
 
 class BaseParser:
@@ -26,7 +27,7 @@ class BaseParser:
         pass
 
 
-class SinsayParser(BaseParser):
+class LPPParser(BaseParser):
 
     js_keyword = 'dataLayer.push('
     regex = re.compile(r'' +re.escape(js_keyword) + r'(.*?)}')
@@ -131,3 +132,52 @@ class HMParser(BaseParser):
             key, value = item.split(':')
             api_data_dict[key.strip()] = value.strip()
         return api_data_dict
+
+
+class IKEAParser(BaseParser):
+
+    js_keyword = 'utag_data = '
+    regex = re.compile(r'' +re.escape(js_keyword) + r'(.*?)}')
+
+    def __init__(self, content: bytes):
+        self.soup = BeautifulSoup(content, 'html.parser')
+        self.shop_name = ''
+        self.item_name = ''
+        self.current_price = ''
+        self.initial_price = ''
+        self.image_url = ''
+
+
+    def get(self) -> dict[str]:
+        js_text = self.find_data_tag()
+        raw_data = self.transform_data_tag(js_text)
+        self.set_item(raw_data)
+
+        self.shop_name = self.get_name_from_title_tag()
+        return {
+            'shop_name': self.shop_name,
+            'item_name': self.item_name,
+            'current_price': self.current_price,
+            'initial_price': self.initial_price,
+            'image_url': self.image_url
+        }
+
+    def set_item(self, raw: dict) -> None:
+        self.item_name = raw['product_item_names'][0]
+        self.current_price = raw['price'][0].replace(',', '.')
+        self.initial_price = 'N/A'
+        self.image_url = 'Requires additional extraction'
+
+    def find_data_tag(self) -> str:
+        tag = self.soup.find('script', {'data-type': 'utag-data'}, True)
+        return tag.text
+
+    def get_name_from_title_tag(self) -> str:
+        title = self.soup.find('title')
+        title_elements = title.text.strip().split('-') #product name - IKEA
+        return title_elements[1].strip()
+
+    def transform_data_tag(self, js_text: str) -> dict[str]:
+        api_data_str = self.regex.search(js_text).group()
+        api_data_str = api_data_str.replace(self.js_keyword, '')
+        return ast.literal_eval(api_data_str)
